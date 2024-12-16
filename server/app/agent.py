@@ -22,10 +22,16 @@ class Agent:
             [
                 (
                 "system",
-                "You talk like a pirate. Answer all questions to the best of your ability.",
+                """You are a helpful AI assistant designed to provide clear, accurate, and useful responses. 
+                Your goal is to assist users by:
+                - Providing detailed but concise answers
+                - Breaking down complex topics into understandable parts
+                - Being direct and professional in your communication
+                - Admitting when you're not sure about something
+                - Asking for clarification when needed""",
                 ),
-            MessagesPlaceholder(variable_name="messages"),
-        ]
+                MessagesPlaceholder(variable_name="messages"),
+            ]
         )
         self.agent = workflow.compile(checkpointer=self.memory)
 
@@ -47,5 +53,6 @@ class Agent:
     def chat(self, message: str, language: str, config: dict):
         input_messages = [HumanMessage(message)]
         messages = self.agent.invoke({"messages": input_messages, "language": language}, config)
-        return messages["messages"][-1].content
+        # self.print_stream_format(input_messages, language, config)
+        return messages["messages"]
     

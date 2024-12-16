@@ -1,44 +1,43 @@
-class SocketService {
-    private socket: WebSocket;
-    private static instance: SocketService;
-    private messageHandlers: ((message: string) => void)[] = [];
+import { WebSocketResponse } from '../types';
 
-    private constructor() {
-        this.socket = new WebSocket('ws://localhost:8000/ws/chat');
+type MessageHandler = (response: WebSocketResponse) => void;
 
-        this.socket.onopen = () => {
-            console.log('Connected to server');
-        };
+export default class SocketService {
+  private static instance: SocketService;
+  private socket: WebSocket | null = null;
+  private messageHandlers: MessageHandler[] = [];
 
-        this.socket.onclose = () => {
-            console.log('Disconnected from server');
-        };
+  private constructor() {
+    this.connect();
+  }
 
-        this.socket.onmessage = (event) => {
-            this.messageHandlers.forEach(handler => handler(event.data));
-        };
+  static getInstance(): SocketService {
+    if (!SocketService.instance) {
+      SocketService.instance = new SocketService();
     }
+    return SocketService.instance;
+  }
 
-    public static getInstance(): SocketService {
-        if (!SocketService.instance) {
-            SocketService.instance = new SocketService();
-        }
-        return SocketService.instance;
-    }
+  private connect() {
+    this.socket = new WebSocket('ws://localhost:8000/ws/chat');
+    
+    this.socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      this.messageHandlers.forEach(handler => handler(data));
+    };
+  }
 
-    public sendMessage(message: string): void {
-        if (this.socket.readyState === WebSocket.OPEN) {
-            this.socket.send(message);
-        }
+  sendMessage(message: string) {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(message);
     }
+  }
 
-    public onMessage(handler: (message: string) => void): void {
-        this.messageHandlers.push(handler);
-    }
+  onMessage(handler: MessageHandler) {
+    this.messageHandlers.push(handler);
+  }
 
-    public offMessage(handler: (message: string) => void): void {
-        this.messageHandlers = this.messageHandlers.filter(h => h !== handler);
-    }
+  offMessage(handler: MessageHandler) {
+    this.messageHandlers = this.messageHandlers.filter(h => h !== handler);
+  }
 }
-
-export default SocketService; 

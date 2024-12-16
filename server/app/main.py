@@ -22,16 +22,27 @@ async def websocket_endpoint(websocket: WebSocket):
             message = await websocket.receive_text()
             language = "English"
             config = {"configurable": {"thread_id": str(id(websocket))}}
-            agent.chat(message, language, config)
-            for chunk, metadata in agent.agent.stream(
-                {"messages": message, "language": language},
-                config,
-                stream_mode="messages",
-            ):
-                if isinstance(chunk, AIMessage):  # Filter to just model responses
-                    print(chunk.content, end="|")
-                    await websocket.send_text(chunk.content)
- 
+            
+            # Add the human message first
+            response = {
+                'messages': [
+                    {'content': message, 'origin': 'human'},
+                ]
+            }
+            await websocket.send_json(response)
+            
+            # Get and send AI response
+            messages = agent.chat(message, language, config)
+            ai_response = {
+                'messages': [
+                    {
+                        'content': messages[-1].content,
+                        'origin': 'ai',
+                    }
+                ]
+            }
+            await websocket.send_json(ai_response)
+
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
