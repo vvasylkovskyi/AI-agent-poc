@@ -47,5 +47,5 @@ class Agent:
     def chat(self, message: str, language: str, config: dict):
         input_messages = [HumanMessage(message)]
         messages = self.agent.invoke({"messages": input_messages, "language": language}, config)
-        self.print_stream_format(input_messages, language, config)
         return messages["messages"][-1].content
+    
