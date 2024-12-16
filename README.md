@@ -20,7 +20,7 @@ source .venv/bin/activate
 # Should show path to your project's virtual environment
 which python
 
-
+test
 # Create and activate virtual environment
 make venv
 source .venv/bin/activate  # (or .venv\Scripts\activate on Windows)
