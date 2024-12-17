@@ -20,6 +20,7 @@ export default class SocketService {
 
   private connect() {
     this.socket = new WebSocket('ws://localhost:8000/ws/chat');
+    // this.socket = new WebSocket('ws://ai-chat-server-1bs7.onrender.com/ws/chat');
     
     this.socket.onmessage = (event) => {
       const data = JSON.parse(event.data);

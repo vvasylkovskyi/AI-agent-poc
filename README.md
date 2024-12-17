@@ -20,7 +20,6 @@ source .venv/bin/activate
 # Should show path to your project's virtual environment
 which python
 
-test
 # Create and activate virtual environment
 make venv
 source .venv/bin/activate  # (or .venv\Scripts\activate on Windows)
@@ -35,4 +34,19 @@ make run
 # You can also run:
 pip -V  # Should show pip from your virtual environment
 
+```
+
+## Run server with docker
+
+```sh
+cd server
+docker build -t ai-chat-server .
+docker run -p 8000:8000 -e OPENAI_API_KEY=your_key_here ai-chat-server
+```
+
+## Push to docker hub
+
+```sh
+docker tag ai-chat-server your_dockerhub_username/ai-chat-server
+docker push your_dockerhub_username/ai-chat-server
 ```

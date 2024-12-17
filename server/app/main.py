@@ -8,7 +8,7 @@ agent = Agent()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "https://vvasylkovskyi.github.io"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,14 +32,17 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_json(response)
             
             # Get and send AI response
-            messages = agent.chat(message, language, config)
+            response = agent.chat(message, language, config)
+            messages = response["messages"]
+            waiting_for_tool_response = response["waiting_for_tool_response"]
             ai_response = {
                 'messages': [
                     {
                         'content': messages[-1].content,
                         'origin': 'ai',
                     }
-                ]
+                ],
+                "waiting_for_tool_response": waiting_for_tool_response
             }
             await websocket.send_json(ai_response)
 
