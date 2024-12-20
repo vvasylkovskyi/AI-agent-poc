@@ -37,36 +37,31 @@ class Agent:
 
         builder = StateGraph(state_schema=MessagesState)
         # Define the two nodes we will cycle between
-        # Define the two nodes we will cycle between
         builder.add_node("call_model", self.call_model)
-        builder.add_node("human_approval", self.wait_for_human_approval)
         builder.add_node("tools", ToolNode(self.tools))
 
-        # Set the entrypoint as `call_model`
+        # Set the entrypoint as call_model
         builder.add_edge(START, "call_model")
         builder.add_conditional_edges(
             "call_model",
             self.route_model_output,
         )
-        builder.add_conditional_edges(
-            "human_approval",
-            self.route_human_approval,
-        )
+
         builder.add_edge("tools", "call_model")
 
         # Compile with checkpointer
         self.agent: CompiledStateGraph = builder.compile(checkpointer=self.memory)
 
-    def route_model_output(
-        self, state: AgentState
-    ) -> Literal["__end__", "human_approval", "tools"]:
+    def route_model_output(self, state: AgentState) -> Literal["__end__", "tools"]:
         """Determine the next node based on the model's output.
+
+        This function checks if the model's last message contains tool calls.
 
         Args:
             state (State): The current state of the conversation.
 
         Returns:
-            str: The name of the next node to call ("__end__", "human_approval", or "tools").
+            str: The name of the next node to call ("__end__" or "tools").
         """
         last_message = state["messages"][-1]
         if not isinstance(last_message, AIMessage):
@@ -76,32 +71,8 @@ class Agent:
         # If there is no tool call, then we finish
         if not last_message.tool_calls:
             return END
-
-        # Check if the create tool is called
-        print(last_message.tool_calls)
-        for call in last_message.tool_calls:
-            if call["name"] == "create_flow_run_tool":
-                return "human_approval"
-
-        # Otherwise proceed to execute the requested tools
+        # Otherwise we execute the requested actions
         return "tools"
-
-    def route_human_approval(self, state: AgentState) -> Literal["tools", "__end__"]:
-        """Route based on human approval for the create tool."""
-        human_approved = state.get("human_approval", False)
-        if human_approved:
-            return "tools"
-        return END
-
-    def wait_for_human_approval(self, state: AgentState) -> Dict[str, str]:
-        """Wait for human approval to execute the create tool.
-
-        Simulates a mechanism to collect approval (e.g., a UI or a prompt).
-        """
-        # In a real-world implementation, this would be a UI request or a blocking event
-        print("Human approval required to execute 'create' tool.")
-        approval: bool = input("Approve execution? (yes/no): ").strip().lower() == "yes"
-        return {"human_approval": approval}
 
     # Define the node that calls the model
     def call_model(self, state: AgentState) -> Dict[str, BaseMessage]:
