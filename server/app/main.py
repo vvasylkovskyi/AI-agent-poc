@@ -1,7 +1,7 @@
-from fastapi import FastAPI, WebSocket
 from app.agent import Agent
-from langchain_core.messages import AIMessage
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from langchain_core.messages import AIMessage
 
 app = FastAPI(title="AI Agent PoC")
 agent = Agent()
@@ -14,6 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -21,28 +22,28 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             message = await websocket.receive_text()
             language = "English"
-            config = {"configurable": {"thread_id": str(id(websocket))}}
-            
+            config = {
+                "configurable": {"thread_id": str(id(websocket)), "recursion_limit": 2}
+            }
+
             # Add the human message first
             response = {
-                'messages': [
-                    {'content': message, 'origin': 'human'},
+                "messages": [
+                    {"content": message, "origin": "human"},
                 ]
             }
             await websocket.send_json(response)
-            
+
             # Get and send AI response
             response = agent.chat(message, language, config)
-            messages = response["messages"]
-            waiting_for_tool_response = response["waiting_for_tool_response"]
             ai_response = {
-                'messages': [
+                "messages": [
                     {
-                        'content': messages[-1].content,
-                        'origin': 'ai',
+                        "content": msg.content,
+                        "origin": "ai",
                     }
-                ],
-                "waiting_for_tool_response": waiting_for_tool_response
+                    for msg in response["messages"]
+                ]
             }
             await websocket.send_json(ai_response)
 
@@ -50,6 +51,7 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"WebSocket error: {e}")
     finally:
         await websocket.close()
+
 
 @app.get("/health-check")
 async def health_check():

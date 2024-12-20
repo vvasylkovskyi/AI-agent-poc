@@ -1,106 +1,124 @@
 import getpass
 import os
-import json
+from typing import Dict, List, Literal, cast
+
+from app.prompts import SYSTEM_PROMPT
+from app.state import AgentState
+from app.tools import TOOLS
+from dotenv import load_dotenv
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.runnables.config import RunnableConfig
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import START,END, MessagesState, StateGraph
-from langchain_community.tools.tavily_search import TavilySearchResults
-from typing import (
-    Annotated,
-    Sequence,
-    TypedDict,
-)
-from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
+from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.prebuilt import ToolNode
+from langgraph.types import StateSnapshot
 
-class AgentState(TypedDict):
-    """The state of the agent."""
-
-    # add_messages is a reducer
-    # See https://langchain-ai.github.io/langgraph/concepts/low_level/#reducers
-    messages: Annotated[Sequence[BaseMessage], add_messages]
-    
 
 class Agent:
     def __init__(self):
+        # Load environment variables from .env file
+        load_dotenv()
+
         if not os.environ.get("OPENAI_API_KEY"):
             os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
 
         if not os.environ.get("TAVILY_API_KEY"):
             os.environ["TAVILY_API_KEY"] = getpass.getpass("Enter API key for Tavily: ")
 
-        # Define our tools
-        search = TavilySearchResults(
-            max_results=2,
-            description="Search the internet for information using Tavily API"
-        )
-        self.tools = [search]
-        self.tools_by_name = {tool.name: tool for tool in self.tools}
+        self.tools = TOOLS
+
         self.model = ChatOpenAI(model="gpt-3.5-turbo")
+        # self.model_with_tools = load_chat_model("gpt-3.5-turbo").bind_tools(self.tools)
         self.model_with_tools = self.model.bind_tools(self.tools)
         # Add memory
         self.memory = MemorySaver()
 
-        workflow = StateGraph(state_schema=MessagesState)
+        builder = StateGraph(state_schema=MessagesState)
         # Define the two nodes we will cycle between
-        workflow.add_node("agent", self.call_model)
-        tool_node = ToolNode(tools=[search])
-        workflow.add_node("tools", tool_node)
+        # Define the two nodes we will cycle between
+        builder.add_node("call_model", self.call_model)
+        builder.add_node("human_approval", self.wait_for_human_approval)
+        builder.add_node("tools", ToolNode(self.tools))
 
-        workflow.add_conditional_edges(
-            "agent",
-            tools_condition,
+        # Set the entrypoint as `call_model`
+        builder.add_edge(START, "call_model")
+        builder.add_conditional_edges(
+            "call_model",
+            self.route_model_output,
         )
+        builder.add_conditional_edges(
+            "human_approval",
+            self.route_human_approval,
+        )
+        builder.add_edge("tools", "call_model")
 
-        workflow.add_edge(START, "agent")
-        workflow.set_entry_point("agent")
-        # We now add a normal edge from `tools` to `agent`.
-        # This means that after `tools` is called, `agent` node is called next.
-        workflow.add_edge("tools", "agent")
-        workflow.add_edge("agent", END)
+        # Compile with checkpointer
+        self.agent: CompiledStateGraph = builder.compile(checkpointer=self.memory)
 
-        self.agent = workflow.compile(checkpointer=self.memory,
-                                      interrupt_before=["tools"])
+    def route_model_output(
+        self, state: AgentState
+    ) -> Literal["__end__", "human_approval", "tools"]:
+        """Determine the next node based on the model's output.
 
+        Args:
+            state (State): The current state of the conversation.
 
+        Returns:
+            str: The name of the next node to call ("__end__", "human_approval", or "tools").
+        """
+        last_message = state["messages"][-1]
+        if not isinstance(last_message, AIMessage):
+            raise ValueError(
+                f"Expected AIMessage in output edges, but got {type(last_message).__name__}"
+            )
+        # If there is no tool call, then we finish
+        if not last_message.tool_calls:
+            return END
+
+        # Check if the create tool is called
+        print(last_message.tool_calls)
+        for call in last_message.tool_calls:
+            if call["name"] == "create_flow_run_tool":
+                return "human_approval"
+
+        # Otherwise proceed to execute the requested tools
+        return "tools"
+
+    def route_human_approval(self, state: AgentState) -> Literal["tools", "__end__"]:
+        """Route based on human approval for the create tool."""
+        human_approved = state.get("human_approval", False)
+        if human_approved:
+            return "tools"
+        return END
+
+    def wait_for_human_approval(self, state: AgentState) -> Dict[str, str]:
+        """Wait for human approval to execute the create tool.
+
+        Simulates a mechanism to collect approval (e.g., a UI or a prompt).
+        """
+        # In a real-world implementation, this would be a UI request or a blocking event
+        print("Human approval required to execute 'create' tool.")
+        approval: bool = input("Approve execution? (yes/no): ").strip().lower() == "yes"
+        return {"human_approval": approval}
 
     # Define the node that calls the model
-    def call_model(self, state: AgentState):
-        system_prompt = SystemMessage(
-            """You are a helpful AI assistant designed to provide clear, accurate, and useful responses. 
-                Your goal is to assist users by:
-                - Providing detailed but concise answers
-                - Breaking down complex topics into understandable parts
-                - Being direct and professional in your communication
-                - Admitting when you're not sure about something
-                - Using the search tool when you need to find current or factual information
-                - Asking for clarification when needed"""
-        )
-        
+    def call_model(self, state: AgentState) -> Dict[str, BaseMessage]:
+
         # Configure the model with tools
-        response = self.model_with_tools.invoke(
-            [system_prompt] + state["messages"],
+        response: BaseMessage = self.model_with_tools.invoke(
+            [SYSTEM_PROMPT] + state["messages"],
         )
         return {"messages": response}
 
+    def chat(self, message: str, language: str, config: RunnableConfig):
+        input_messages: List[HumanMessage] = [HumanMessage(message)]
+        messages = self.agent.invoke(
+            {"messages": input_messages, "language": language}, config
+        )
+        snapshot: StateSnapshot = self.agent.get_state(config)
 
-    def print_stream_format(self, input_messages, language, config):
-        for chunk, metadata in self.agent.stream(
-            {"messages": input_messages, "language": language},
-            config,
-            stream_mode="messages",
-        ):
-            if isinstance(chunk, AIMessage):  # Filter to just model responses
-                print(chunk.content, end="|")        
-
-    def chat(self, message: str, language: str, config: dict):
-        input_messages = [HumanMessage(message)]
-        messages = self.agent.invoke({"messages": input_messages, "language": language}, config)
-        snapshot = self.agent.get_state(config)
-        print(snapshot.next)
         if "tools" in snapshot.next:
-            return { "messages": messages["messages"], "waiting_for_tool_response": True }
-        return { "messages": messages["messages"], "waiting_for_tool_response": False }
-    
+            return {"messages": messages["messages"], "waiting_for_tool_response": True}
+        return {"messages": messages["messages"], "waiting_for_tool_response": False}
