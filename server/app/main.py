@@ -2,6 +2,7 @@ from app.agent import Agent
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import AIMessage
+from langchain_core.runnables.config import RunnableConfig
 
 app = FastAPI(title="AI Agent PoC")
 agent = Agent()
@@ -22,7 +23,7 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             message = await websocket.receive_text()
             language = "English"
-            config = {
+            config: RunnableConfig = {
                 "configurable": {"thread_id": str(id(websocket)), "recursion_limit": 2}
             }
 
