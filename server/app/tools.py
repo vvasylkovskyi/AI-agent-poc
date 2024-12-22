@@ -6,6 +6,7 @@ import requests
 from app.cust_logger import logger, set_files_message_color
 from app.state import AgentState
 from app.types import Flow, FlowToolResponse
+from dotenv import load_dotenv
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.tools import StructuredTool
 
@@ -13,6 +14,8 @@ magneto_api_url = "https://magneto-api-dev.rely.io/api/v1"
 token = ""
 
 # Test message: Create GKE cluster
+
+load_dotenv()
 
 set_files_message_color("YELLOW")
 

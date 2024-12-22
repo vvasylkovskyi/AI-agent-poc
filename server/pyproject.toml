@@ -2,12 +2,14 @@
 name = "ai-agent-poc"
 version = "0.1.0"
 description = "A proof of concept project using FastAPI"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Your Name <viktor.vasylkovskyi@gmail.com>"]
 
 [tool.poetry.dependencies]
-python = "^3.11"
-fastapi = "^0.104.1"
-uvicorn = "^0.24.0"
+python = "^3.12"
+fastapi = ">=0.109.0"
+starlette = ">=0.38.6"
+uvicorn = ">=0.26.0"
+langgraph-cli = {version = "^0.1.65", extras = ["inmem"]}
 langchain-openai = "^0.2.12"
 langgraph = "^0.2.59"
 python-socketio = "^5.11.4"

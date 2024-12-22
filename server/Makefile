@@ -1,4 +1,4 @@
-.PHONY: install run test clean
+.PHONY: install run test clean langgraph
 
 install:
 	poetry install
@@ -11,3 +11,6 @@ test:
 
 clean:
 	find . -type d -name __pycache__ -exec rm -r {} +
+
+langgraph:
+	poetry run langgraph dev

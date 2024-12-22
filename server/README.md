@@ -26,10 +26,16 @@ Make sure to install LangGraph dependencies first.
 pip install --upgrade "langgraph-cli[inmem]"
 ```
 
+or if using MAC:
+
+```sh
+brew install langgraph-cli
+```
+
 Run LangGraph server
 
 ```sh
-langgraph dev
+make langgraph
 ```
 
 ## Run server with docker
