@@ -1,5 +1,6 @@
 export interface Message {
-    content: string;
+    user: string;
+    msg: string
     origin: 'human' | 'ai';
 }
   

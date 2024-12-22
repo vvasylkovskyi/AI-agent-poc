@@ -1,85 +1,117 @@
-import {
-  Box,
-  Button,
-  Container,
-  MantineProvider,
-  Paper,
-  Stack,
-  TextInput,
-  Title,
-} from "@mantine/core";
-import "@mantine/core/styles.css";
-import React, { useEffect, useState } from "react";
-import SocketService from "./services/socket";
-import { Message, WebSocketResponse } from "./types";
+import React, {
+  ChangeEvent,
+  KeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import "./App.css";
+import { useWebSocket } from "./services/useWebSocket"; // Custom hook to manage WebSocket connection
 
 const App: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputMessage, setInputMessage] = useState("");
-  const socketService = SocketService.getInstance();
+  const [messages, setMessages] = useState<{ user: string; msg: string }[]>([
+    { user: "Bot", msg: "Welcome! How can I be of service today?" }, // Initial bot message
+  ]);
+  const [input, setInput] = useState(""); // User input state
+
+  // WebSocket connection logic (message handling & status tracking)
+  const { response, isOpen, sendMessage } = useWebSocket(
+    "ws://localhost:8000/ws/chat"
+  );
+  const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for scrolling to the latest message
 
   useEffect(() => {
-    const messageHandler = (response: WebSocketResponse) => {
-      setMessages((prev) => [...prev, ...response.messages]);
-    };
+    // Handle WebSocket responses and update messages
+    if (response) {
+      setMessages((prevMessages) => {
+        const lastMessage = prevMessages[prevMessages.length - 1];
+        // Update last bot message or add a new one
+        if (lastMessage && lastMessage.user === "Bot") {
+          lastMessage.msg = response;
+          return [...prevMessages];
+        } else {
+          return [...prevMessages, { user: "Bot", msg: response }];
+        }
+      });
+    }
+  }, [response]);
 
-    socketService.onMessage(messageHandler);
+  // Updates input field on change
+  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(event.target.value);
+  };
 
-    return () => {
-      socketService.offMessage(messageHandler);
-    };
-  }, []);
+  // Handles sending of messages from the user
+  const handleSubmit = () => {
+    if (input.trim()) {
+      const userMessage = { user: "User", msg: input };
+      setMessages((prevMessages) => [...prevMessages, userMessage]); // Add user message to list
+      setInput("");
 
-  const sendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (inputMessage.trim()) {
-      socketService.sendMessage(inputMessage);
-      setInputMessage("");
+      if (isOpen) {
+        sendMessage(input); // Send message via WebSocket if open
+      }
+    }
+  };
+
+  // Scrolls to the latest token in the chat whenever a new message is added
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }); // , 100); // you can add delay for scrolling, giving user a moment to read message bots message,
+    // but looks slightly jittery
+
+    return () => clearTimeout(timer); // Cleanup the timeout
+  }, [messages]);
+
+  // Handles "Enter" key submission without needing to click the send button
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault(); // Prevent default newline
+      handleSubmit();
     }
   };
 
   return (
-    <MantineProvider>
-      <Container size="sm" h="100vh" pt="xl" pb="xl">
-        <Paper shadow="md" p="md" h="calc(100vh - 4rem)">
-          <Title order={2} mb="lg">
-            Welcome. Begin chatting with your AI agent.
-          </Title>
-
-          <Stack gap="md" h="calc(100% - 7rem)" style={{ overflowY: "auto" }}>
-            {messages.map((msg, index) => (
-              <Paper
-                key={index}
-                p="sm"
-                withBorder
-                style={{
-                  backgroundColor: msg.origin === "human" ? "#f0f0f0" : "white",
-                  marginLeft: msg.origin === "human" ? "auto" : "0",
-                  marginRight: msg.origin === "ai" ? "auto" : "0",
-                  maxWidth: "80%",
-                }}
-              >
-                {msg.content}
-              </Paper>
-            ))}
-          </Stack>
-
-          <Box component="form" onSubmit={sendMessage} mt="md">
-            <TextInput
-              placeholder="Type a message..."
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              rightSectionWidth={100}
-              rightSection={
-                <Button type="submit" fullWidth>
-                  Send
-                </Button>
-              }
-            />
-          </Box>
-        </Paper>
-      </Container>
-    </MantineProvider>
+    <div className="App">
+      <div className="chat-header">
+        {/* Connection status indicator and title */}
+        <div
+          className={`connection-status ${isOpen ? "online" : "offline"}`}
+        ></div>
+        <b>Agent Chat POC (React + FastAPI)</b>
+      </div>
+      <div className="chat-container">
+        {/* Display chat messages */}
+        <div className="messages">
+          {messages.map((msg, index) => (
+            <div
+              key={index}
+              className={msg.user === "User" ? "message user" : "message bot"}
+            >
+              <strong>{msg.user}: </strong>
+              <br />
+              {msg.msg}
+            </div>
+          ))}
+          <div ref={messagesEndRef} />
+          {/* Reference to scroll to the latest message */}
+        </div>
+        {/* Input form for typing and sending messages */}
+        <form className="chat-form" onSubmit={(e) => e.preventDefault()}>
+          <textarea
+            value={input}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder="Type or paste your message..."
+            rows={4}
+          />
+          <button type="button" onClick={handleSubmit}>
+            Send
+          </button>
+        </form>
+      </div>
+    </div>
   );
 };
 

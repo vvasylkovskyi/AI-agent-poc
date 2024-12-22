@@ -1,95 +1,63 @@
-import getpass
-import os
-from typing import Dict, List, Literal, cast
+import json
+from datetime import datetime
 
-from app.prompts import SYSTEM_PROMPT
-from app.state import AgentState
-from app.tools import TOOLS
-from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from app.cust_logger import logger, set_files_message_color
+from app.graph import graph_runnable
+from fastapi import WebSocket
 from langchain_core.runnables.config import RunnableConfig
-from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, START, MessagesState, StateGraph
-from langgraph.graph.state import CompiledStateGraph
-from langgraph.prebuilt import ToolNode
-from langgraph.types import StateSnapshot
+
+set_files_message_color("MAGENTA")  # Set color for logging in this function
 
 
-class Agent:
-    def __init__(self):
-        # Load environment variables from .env file
-        load_dotenv()
+async def invoke_agent(websocket: WebSocket, data: str, user_uuid: str):
+    initial_input: dict[str, str] = {"messages": data}
+    thread_config: RunnableConfig = {
+        "configurable": {"thread_id": user_uuid}
+    }  # Pass users conversation_id to manage chat memory on server side
+    final_text = ""  # accumulate final output to log, rather then each token
 
-        if not os.environ.get("OPENAI_API_KEY"):
-            os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
+    # Asynchronous event-based response processing, data designated by event as key
+    async for event in graph_runnable.astream_events(
+        initial_input, thread_config, version="v2"
+    ):
+        kind: str = event["event"]
+        # print("Event: ", event)
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content"):
+                addition: str = chunk.content
+                final_text += addition
+                if addition:
+                    message = json.dumps({"on_chat_model_stream": addition})
+                    await websocket.send_text(message)
 
-        if not os.environ.get("TAVILY_API_KEY"):
-            os.environ["TAVILY_API_KEY"] = getpass.getpass("Enter API key for Tavily: ")
-
-        self.tools = TOOLS
-
-        self.model = ChatOpenAI(model="gpt-3.5-turbo")
-        # self.model_with_tools = load_chat_model("gpt-3.5-turbo").bind_tools(self.tools)
-        self.model_with_tools = self.model.bind_tools(self.tools)
-        # Add memory
-        self.memory = MemorySaver()
-
-        builder = StateGraph(state_schema=MessagesState)
-        # Define the two nodes we will cycle between
-        builder.add_node("call_model", self.call_model)
-        builder.add_node("tools", ToolNode(self.tools))
-
-        # Set the entrypoint as call_model
-        builder.add_edge(START, "call_model")
-        builder.add_conditional_edges(
-            "call_model",
-            self.route_model_output,
-        )
-
-        builder.add_edge("tools", "call_model")
-
-        # Compile with checkpointer
-        self.agent: CompiledStateGraph = builder.compile(checkpointer=self.memory)
-
-    def route_model_output(self, state: AgentState) -> Literal["__end__", "tools"]:
-        """Determine the next node based on the model's output.
-
-        This function checks if the model's last message contains tool calls.
-
-        Args:
-            state (State): The current state of the conversation.
-
-        Returns:
-            str: The name of the next node to call ("__end__" or "tools").
-        """
-        last_message = state["messages"][-1]
-        if not isinstance(last_message, AIMessage):
-            raise ValueError(
-                f"Expected AIMessage in output edges, but got {type(last_message).__name__}"
+        elif kind == "on_chat_model_end":
+            # Indicate the end of model generation so FE knows the message is over
+            message = json.dumps({"on_chat_model_end": True})
+            logger.info(
+                json.dumps(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "uuid": user_uuid,
+                        "llm_method": kind,
+                        "sent": final_text,
+                    }
+                )
             )
-        # If there is no tool call, then we finish
-        if not last_message.tool_calls:
-            return END
-        # Otherwise we execute the requested actions
-        return "tools"
+            await websocket.send_text(message)
 
-    # Define the node that calls the model
-    def call_model(self, state: AgentState) -> Dict[str, BaseMessage]:
-
-        # Configure the model with tools
-        response: BaseMessage = self.model_with_tools.invoke(
-            [SYSTEM_PROMPT] + state["messages"],
-        )
-        return {"messages": response}
-
-    def chat(self, message: str, language: str, config: RunnableConfig):
-        input_messages: List[HumanMessage] = [HumanMessage(message)]
-        messages = self.agent.invoke(
-            {"messages": input_messages, "language": language}, config
-        )
-        snapshot: StateSnapshot = self.agent.get_state(config)
-
-        if "tools" in snapshot.next:
-            return {"messages": messages["messages"], "waiting_for_tool_response": True}
-        return {"messages": messages["messages"], "waiting_for_tool_response": False}
+        elif kind == "on_custom_event":
+            # sends across custom event as if its its own event for easy working
+            # check out `conditional_check` node
+            message: str = json.dumps({event["name"]: event["data"]})
+            logger.info(
+                json.dumps(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "uuid": user_uuid,
+                        "llm_method": kind,
+                        "sent": message,
+                    }
+                )
+            )
+            await websocket.send_text(message)

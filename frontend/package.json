@@ -22,11 +22,10 @@
         "webpack-dev-server": "^5.2.0"
     },
     "dependencies": {
-        "@emotion/react": "^11.14.0",
-        "@mantine/core": "^7.15.1",
-        "@mantine/hooks": "^7.15.1",
+        "@types/uuid": "^10.0.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "socket.io-client": "^4.8.1"
+        "socket.io-client": "^4.8.1",
+        "uuid": "^11.0.3"
     }
 }
