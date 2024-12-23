@@ -3,9 +3,12 @@ name = "ai-agent-poc"
 version = "0.1.0"
 description = "A proof of concept project using FastAPI"
 authors = ["Your Name <viktor.vasylkovskyi@gmail.com>"]
+readme = "README.md"
+packages = [{include = "app"}]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.12,<3.13"
+google-cloud-aiplatform = { version = "^1.75.0", extras = ["langchain", "reasoningengine"] }
 fastapi = ">=0.109.0"
 starlette = ">=0.38.6"
 uvicorn = ">=0.26.0"
