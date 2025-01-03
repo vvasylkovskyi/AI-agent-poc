@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
-from app.types import Flow
 from langchain_core.messages import AnyMessage
 from langgraph.graph import add_messages
 from typing_extensions import Annotated
@@ -36,6 +35,3 @@ class AgentState:
     The `add_messages` annotation ensures that new messages are merged with existing ones,
     updating by ID to maintain an "append-only" state unless a message with the same ID is provided.
     """
-
-    language: str = field(default="English")
-    found_flow: Optional[Flow] = field(default=None)

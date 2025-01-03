@@ -5,13 +5,13 @@ from typing import Any, Callable, List
 import requests
 from app.cust_logger import logger, set_files_message_color
 from app.state import AgentState
-from app.types import Flow, FlowToolResponse
 from dotenv import load_dotenv
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import tool
 
-magneto_api_url = "https://magneto-api-dev.rely.io/api/v1"
-token = ""
+# magneto_api_url = "https://magneto-api-dev.rely.io/api/v1"
+magneto_api_url = "https://magneto.rely.io/api/v1"
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Ijc5ZGU1NWU3LTBmODgtNDkzZS1iYTA1LTk2NDFmMmVhYzlhMiIsImlzcyI6ImxvY2FsIiwic3ViIjoidXNlciIsInVzZXJfbmFtZSI6IkJydWNlIFdheW5lIiwiZW1haWwiOiJhbmRyZStwdWJsaWNkZW1vYWNjb3VudEByZWx5LmlvIiwiZXh0ZXJuYWxfdXNlcl9pZCI6NDIzLCJleHRlcm5hbF9vcmdhbml6YXRpb25faWQiOjM2MCwiZXh0ZXJuYWxfb3JnYW5pemF0aW9uX25hbWUiOiJQdWJsaWMgRGVtbyIsImV4cCI6MjAxNzE0MDkwNSwiaWF0IjoxNzA2MTAwOTA1fQ.xOrSQ4fkYTVv4p0SkJpQftM0xdKKq2Ke5q_vsNDA4E8"
 
 # Test message: Create GKE cluster
 
@@ -65,19 +65,28 @@ def fetch_all_flows() -> dict:
         json = response.json()
         return json["items"]
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching flows: {e}")
+        print(f"Error fetching self service actions: {e}")
         return fetch_all_flows_mock()
 
 
-def fetch_flow_tool(query: str, state: AgentState) -> FlowToolResponse:
-    """Find the flow that matches the query and store it in state."""
-    flows = fetch_all_flows_mock()["data"]
+@tool
+def fetch_flow_tool(query: str, state: AgentState):
+    """Find the self service action that matches the query and return the link to it it."""
+    all_flows = fetch_all_flows()
+    # Map to a list of objects with only 'id', 'title', and 'description'
+    flows = [
+        {"id": flow["id"], "title": flow["title"], "description": flow["description"]}
+        for flow in all_flows
+    ]
 
     # Break query into meaningful keywords
     keywords = [
         word.strip().lower() for word in query.split() if len(word.strip()) > 2
     ]  # Skip small words
     logger.info(f"Searching with keywords: {keywords}")
+
+    if "list" in keywords:
+        return f"Here are all available self-service actions: {flows}"
 
     matches = []
     for flow in flows:
@@ -104,66 +113,17 @@ def fetch_flow_tool(query: str, state: AgentState) -> FlowToolResponse:
     if matches:
         best_match = matches[0]
         flow, score, keywords = best_match
-        state.found_flow = flow
 
         if len(matches) == 1:
-            return FlowToolResponse(
-                found=True,
-                flow=flow,
-                flows=None,
-                message=f"I found the flow '{flow['title']}' ({flow['description']}) matching {len(keywords)} keywords. Would you like to execute this flow?",
-            )
+            return f"I found the Link to Self Service Action: '{flow['title']}' Here it goes. https://demo.rely.io/self-service/action-details/{flow['id']}/action-details. You can run the self service action from web UI"
         else:
-            return FlowToolResponse(
-                found=True,
-                flow=flow,
-                flows=[m[0] for m in matches],
-                message=f"I found {len(matches)} flows. The best match is '{flow['title']}' ({flow['description']}). Would you like to execute this flow?",
-            )
+            return f"I found {len(matches)} self service actions. The best match is '{flow['title']}' ({flow['description']})."
 
-    return FlowToolResponse(
-        found=False,
-        flow=None,
-        flows=flows,
-        message=f"I couldn't find any flows matching your keywords: {keywords}. Here are all available flows: {flows}",
-    )
+    return f"I couldn't find any self service actions matching your keywords: {keywords}. Here are all available self service actions: {flows}"
 
-
-def create_flow_run_tool(query: str, state: AgentState) -> FlowToolResponse:
-    """Execute the flow stored in state."""
-    flow: Flow | None = state.found_flow
-    if not flow:
-        return FlowToolResponse(
-            found=False,
-            flow=None,
-            flows=None,
-            message="No flow was found to execute. Please find a flow first.",
-        )
-
-    print(f"Executing flow: {flow}")
-    return FlowToolResponse(
-        found=True,
-        flow=flow,
-        flows=None,
-        message=f"Flow '{flow['title']}' has been executed successfully.",
-    )
-
-
-# Create structured tools with state
-fetch_flow: StructuredTool = StructuredTool.from_function(
-    func=fetch_flow_tool,
-    name="fetch_flow_tool",
-    description="Find a flow/self-service action based on the query and store it for execution.",
-)
-
-create_flow_run: StructuredTool = StructuredTool.from_function(
-    func=create_flow_run_tool,
-    name="create_flow_run_tool",
-    description="Execute the previously found flow/self-service action. Must be used after fetch_flow_tool has found a flow.",
-)
 
 global_search = TavilySearchResults(
     max_results=2, description="Search the internet for information using Tavily API"
 )
 
-TOOLS: List[Callable[..., Any]] = [fetch_flow, create_flow_run, global_search]
+TOOLS: List[Callable[..., Any]] = [fetch_flow_tool, global_search]
