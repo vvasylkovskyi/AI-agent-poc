@@ -30,13 +30,13 @@ if not model_path:
 # Initialize the ChatModel LLM
 # ChatModel vs LLM concept https://python.langchain.com/docs/concepts/#chat-models
 # Available ChatModel integrations with LangChain https://python.langchain.com/docs/integrations/chat/
-model = ChatOpenAI(
-    model="gpt-3.5-turbo",
-    temperature=0,
-)
+# model = ChatOpenAI(
+#     model="gpt-3.5-turbo",
+#     temperature=0,
+# )
 
 # https://python.langchain.com/docs/integrations/chat/google_vertex_ai_palm/
-# model = ChatVertexAI(model="gemini-1.5-pro")
+model = ChatVertexAI(model="gemini-1.5-pro")
 model_with_tools = model.bind_tools(TOOLS)
 
 

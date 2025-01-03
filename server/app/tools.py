@@ -70,7 +70,7 @@ def fetch_all_flows() -> dict:
 
 
 @tool
-def fetch_flow_tool(query: str, state: AgentState):
+def fetch_flow_tool(query: str):
     """Find the self service action that matches the query and return the link to it it."""
     all_flows = fetch_all_flows()
     # Map to a list of objects with only 'id', 'title', and 'description'
