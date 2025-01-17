@@ -1,0 +1,3 @@
+[
+    {"input": "rollout my app", "expected_output": "I found the self-service action for rolling out an app. You can access it through this link: [Rollout app](https://demo.rely.io/self-service/action-details/rollout/action-details). You can run the self-service action from the web UI."},
+]
